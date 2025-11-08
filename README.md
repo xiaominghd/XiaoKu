@@ -6,6 +6,9 @@
 <!-- Logo 示例2：Shields.io 徽章+emoji -->
 <p align="center">
   <img src="https://img.shields.io/badge/XiaoKu-小酷机器人-36CFC9?style=for-the-badge&logo=github&logoColor=white" alt="小酷 Logo Badge" />
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python Badge" />
+  <img src="https://img.shields.io/badge/大模型-LLM-ff69b4?style=for-the-badge&logo=semantic-release&logoColor=white" alt="LLM Badge" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License Badge" />
   <br/>
 💡
 </p>
@@ -14,8 +17,9 @@
 
 ## 项目背景
 
-简要说明此项目的背景、目标以及解决的问题。  
-例如：项目的立项原因、面向的用户、核心价值等。
+小酷机器人是一个温柔、诚恳和聪明的陪伴助手。
+对于用户，小酷机器人实现永远热情、贴心的陪伴；
+对于小酷，将会在与用户的对话过程中，让记忆迭代，以主动学习的方式了解世界。
 
 ## 功能列表
 
