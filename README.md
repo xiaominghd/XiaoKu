@@ -1,13 +1,13 @@
 <!-- Logo 示例1：本地 Logo 图片 -->
 <p align="center">
-  <img src="assets/logo.png" alt="项目 Logo" width="120" />
+  <img src="Assets/logo.png" alt="项目 Logo" width="120" />
 </p>
 
 <!-- Logo 示例2：Shields.io 徽章+emoji -->
 <p align="center">
   <img src="https://img.shields.io/badge/XiaoKu-小酷机器人-36CFC9?style=for-the-badge&logo=github&logoColor=white" alt="小酷 Logo Badge" />
   <br/>
-  🤖💡
+💡
 </p>
 
 # 陪伴机器人小酷
@@ -101,6 +101,6 @@ cd <项目目录>
 
 ## 联系方式
 
-- 作者：xxx
-- 邮箱：xxx@example.com
+- 作者：GongHaofeng
+- 邮箱：1530383208@qq.com
 - 更多联系方式...
