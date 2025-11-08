@@ -10,16 +10,15 @@
   <img src="https://img.shields.io/badge/大模型-LLM-ff69b4?style=for-the-badge&logo=semantic-release&logoColor=white" alt="LLM Badge" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License Badge" />
   <br/>
-💡
 </p>
 
 # 陪伴机器人小酷
 
 ## 项目背景
 
-小酷机器人是一个温柔、诚恳和聪明的陪伴助手。
-对于用户，小酷机器人实现永远热情、贴心的陪伴；
-对于小酷，将会在与用户的对话过程中，让记忆迭代，以主动学习的方式了解世界。
+- 小酷机器人是一个温柔、诚恳和聪明的陪伴助手。
+- 对于用户，小酷机器人实现永远热情、贴心的陪伴；
+- 对于小酷，将会在与用户的对话过程中，让记忆迭代，以主动学习的方式了解世界。
 
 ## 功能列表
 
