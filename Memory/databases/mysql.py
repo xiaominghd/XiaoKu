@@ -11,6 +11,7 @@
 import pymysql
 from base.config import *
 from typing import Optional
+import re
 
 
 class HistoryTableManager:
@@ -136,14 +137,76 @@ class HistoryTableManager:
         finally:
             connection.close()
 
+    def select_current_state(self):
+
+        # id是主键，通过id快速的找到用户最近的心理状态活动
+
+        connection = self.get_connection()
+
+        try:
+
+            with connection.cursor() as cursor:
+
+                sql = "select * from history_table order by id desc limit 1"
+                cursor.execute(sql)
+                result = cursor.fetchone()
+
+                status = result[1]
+                current_id = result[0]
+
+            connection.close()
+            return current_id, status
+
+
+        except Exception as e:
+            print(f"查询记录的时候出错:{e}")
+            return None
+
+    def select_by_ids(self, ids: list) -> list:
+        """根据ID列表批量查询记录"""
+        if not ids:
+            return []
+
+        connection = self.get_connection()
+        try:
+            with connection.cursor() as cursor:
+                placeholders = ', '.join(['%s'] * len(ids))
+                sql = f"SELECT * FROM history_table WHERE id IN ({placeholders})"
+                cursor.execute(sql, ids)
+                results = cursor.fetchall()
+                return results
+        except Exception as e:
+            print(f"批量查询记录时出错: {e}")
+            return []
+        finally:
+            connection.close()
+
+    @staticmethod
+    def format_output(mysql_output):
+
+        pattern = r'(\d{4})-(\d{2})-(\d{2}) (\d{2})'
+        match = re.search(pattern, str(mysql_output[3]))
+
+        if match:
+            year, month, day, hour = match.groups()
+            match = f"{year}年{month}月{day}日 {hour}时"  # 2025年11月04日 18时
+
+        return f"时间：{match} 事件：{mysql_output[2]} 状态：{mysql_output[1]}"
+
+
+
+
+
+
+
+
 if __name__=="__main__":
 
     db_manager = HistoryTableManager()
 
-    record = db_manager.select_by_id(id="0")
-    print(f"查询结果：{record}")
+    record = db_manager.select_current_state()
+    print(record)
 
-    db_manager.delete_record(id="0")
 
 
 

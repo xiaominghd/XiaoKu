@@ -49,6 +49,44 @@ class HistoryIndexManager:
             print(f"❌ 插入失败: {response}")
             return False
 
+    def search_similar_state(self, state):
+
+        query_vector = get_qwen_embedding(state)
+
+        query_body = {
+            "script_score": {
+                "query": {"match_all": {}},
+                "script": {
+                    "source": "cosineSimilarity(params.query_vector, 'memory_vector') + 1",  # 使用变量label_col
+                    "params": {"query_vector": query_vector}
+                }
+            }
+        }
+        try:
+            response = self.client.search(index=self.index, query=query_body, size=4)
+            result = []
+
+
+            for hit in response['hits']['hits']:
+
+                if hit['_score'] > 1.5 :  # 需要排除当前的事件
+
+                    result.append(hit['_source']['memory_id'])
+
+            return result
+
+        except Exception as e:
+            print(f"查询ES相关事件发生错误：{e}")
+            return []
+
+
+if __name__=="__main__":
+
+    history = HistoryIndexManager()
+    history.search_similar_state(state="心情不错")
+
+
+
 
 
 

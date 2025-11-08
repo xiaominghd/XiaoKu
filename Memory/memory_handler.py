@@ -18,8 +18,14 @@ class KuMemory:
 
         id = generate_timestamp_key()
 
-        mysql_flag = await self.mysql.insert_record(id=id,status=status, envent=summary)
-        es_flag = await self.es.insert(id=id, status=status)
+        try:
+
+            await self.mysql.insert_record(id=id,status=status, envent=summary)
+
+            await self.es.insert(id=id, status=status)
+
+        except Exception as e:
+            print(f"插入记忆事件发生错误：{e}")
 
 
 
