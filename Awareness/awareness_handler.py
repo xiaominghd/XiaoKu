@@ -14,47 +14,32 @@ class KuFeeling:
 
         self.history = messages.message_list_dict["send"]
 
-    async def summary_from_message_bank(self, memory:KuMemory):
+    async def summary_from_message_bank(self):
 
         role_mapper = {"user":"主人","assistant":"小酷"}
-
-
 
         # 使用message bank里面的事件去进行总结
         history_str = "\n".join([f"{role_mapper[m.role]}:{m.content}" for m in self.history])
 
-        human_feeling_prompt = r"""你是一个智能助手，你的任务是从主人和小酷的对话历史中提取并总结以下关键信息：
-
-涉及的事件：总结对话中提及的主要事件，包括事件的关键内容、发展过程和相关结果（如提及）。
-
-用户的状态：分析主人在对话中表现出的行为、心情、意图和情感变化，用于构建全面的用户画像。
-
-输出要求：
-
-将两个总结用“|”符号分隔，格式为“事件总结：内容 | 用户状态：内容”。
-
-只输出总结部分，不要添加任何其他文字、解释或格式。
-
-对话历史如下:
-<history>"""
+        human_feeling_prompt = r"""你是一个智能的助手，你的任务是在小酷和主人的聊天中总结出以下的信息
+1、聊天的总结。包括对于聊天内容的简要概述，既包括事件的全过程，也包括主人的一些重要的观点，在后续想要进一步了解的内容信息（如果有的话），但你要注意在总结过程中不要关注过多的细节问题。
+2、主人的反馈。主要是针对于进行聊天过程中主人当前的心理状态，请不要进行过度的推断。
+请你按顺序返回上述信息，并使用|将两者内容进行分隔，除此之外不要返回其他任何信息。
+返回示例（仅做格式参考）：
+主人和小酷分享了晚餐，并且想要进一步的了解健康饮食相关的知识。|主人心情高兴。
+小酷和主人的聊天内容如下：
+<history>
+"""
 
         human_feeling = get_deepseek_answer([{'role':"user","content":human_feeling_prompt.replace("<history>", history_str)}])
 
         try:
-
             summary, status = human_feeling.split("|")
-            summary = summary.split("：")[1]
-            status = status.split("：")[1]
-
+            return summary, status
 
         except Exception as e:
             print(f"在对大模型输出：{human_feeling}时报错：{e}")
             return None
-
-        await memory.insert_satus_summary(summary, status)
-        return None
-
-
 
 
 

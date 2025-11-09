@@ -5,6 +5,7 @@
 """
 coze_api_token = 'pat_moDQu61eEK1Mxom6EAmfNfIaIVUIM5MuuMI9vQvOjhhuBDKYwWL6eLenh2wb7sLd'
 news_search_agent_id = '7530190713070551050'
+conversation_planner_agent_id = '7568833984739164206'
 
 api_base = r"https://api.siliconflow.cn/v1/chat/completions"
 api_token = r"sk-vusnpunxueynoldmcvgeelapmnfyraykvirgxhibmodjbybn"

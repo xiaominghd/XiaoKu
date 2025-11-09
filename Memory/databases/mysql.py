@@ -191,7 +191,7 @@ class HistoryTableManager:
             year, month, day, hour = match.groups()
             match = f"{year}年{month}月{day}日 {hour}时"  # 2025年11月04日 18时
 
-        return f"时间：{match} 事件：{mysql_output[2]} 状态：{mysql_output[1]}"
+        return f"时间：{match} 事件：{mysql_output[2]} 主人心情状态：{mysql_output[1]}"
 
 
 

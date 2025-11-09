@@ -20,8 +20,11 @@ class RecommendSystem:
 
         now = datetime.now()
 
-        current_time = now.strftime('%Y年%m月%d日 %H时%M分%S秒')
-        print(f"获取到当前时间为：{current_time}")
+        current_time = now.strftime('%Y年%m月%d日 %H时')
+
+        weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        weekday_str = weekday_cn[now.weekday()]
+        print(f"当前时间为：{current_time} {weekday_str}")
 
         current_id, current_state = self.mysql.select_current_state()
         print(f"获取到当前状态为：{current_state}")
@@ -35,9 +38,6 @@ class RecommendSystem:
         events = "\n".join([self.mysql.format_output(e) for e in events_list])
 
         return events
-
-
-
 
 
 if __name__=="__main__":

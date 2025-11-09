@@ -7,6 +7,7 @@ from typing import Optional
 import asyncio
 from base.api import *
 
+
 class NewsSearchAgent:
 
     def __init__(self):

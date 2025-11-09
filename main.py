@@ -3,17 +3,9 @@
 @date: 2025/11/6
 @description: 
 """
-import asyncio
 import websockets
-import json
-
-from Scheduler import *
-from Tool.manager import *
-from Memory.memory_handler import *
 from Scheduler.Ku import *
-from Awareness.awareness_handler import *
-from base.config import *
-from datetime import datetime, timedelta
+from Scheduler.KuBackgroundTask import *
 
 
 
@@ -27,14 +19,15 @@ class ChatServer:
         self.feeling = feeling
         self.memory = memory
 
+        self.agent = XiaoKu(tool=self.tools, reply=self.reply, feeling=self.feeling, memory=self.memory)
+        self.background_task = BackgroundTaskHandler(self.agent)
+
+        self.last_remind_time = datetime.now()
+
 
         # 消息发送器任务
         self.message_sender_task = None
         self.is_running = False
-        self.reminder_task = None
-
-        self.last_user_activity = None
-        self.reminder_sent = False
 
     async def handle_client(self, websocket):
         """处理客户端连接"""
@@ -49,9 +42,6 @@ class ChatServer:
         client_ip = websocket.remote_address[0] if websocket.remote_address else "Unknown"
         print(f"客户端连接: {client_ip}")
 
-        agent = XiaoKu(tool=self.tools, reply=self.reply, feeling=self.feeling)
-
-
         # 发送欢迎消息
         welcome_msg = {
             'type': 'system',
@@ -60,96 +50,42 @@ class ChatServer:
         }
         await websocket.send(json.dumps(welcome_msg))
 
-        agent.init_agent()  # 初始化Agent
-
-        print("小酷已经初始化完成")
-
-        self.last_user_activity = datetime.now()
-        self.reminder_sent = False
+        plan_task = asyncio.create_task(self.background_task.get_plan_system())
+        # 初始化Agent
+        print("初始化已经完成")
 
         # 启动消息发送器
         self.is_running = True
+        asyncio.create_task(self.background_task_monitor(websocket))
         self.message_sender_task = asyncio.create_task(self.send_pending_messages(websocket))
-        self.reminder_task = asyncio.create_task(self.monitor_user_activity(websocket))
 
         # 处理客户端消息
         async for message in websocket:
             print(f"收到来自 {client_ip} 的消息: {message}")
-
-            self.last_user_activity = datetime.now()
-            self.reminder_sent = False  # 重置提醒标记
-
+            self.last_remind_time = datetime.now()
             # 处理用户消息并获取响应
-            await agent.chat(message=message)
+            await self.agent.chat(message=message)
 
+    async def background_task_monitor(self, websocket):
 
-        # finally:
-        #     # 停止消息发送器
-        #     self.is_running = False
-        #     if self.message_sender_task:
-        #         self.message_sender_task.cancel()
-        #         try:
-        #             await self.message_sender_task
-        #         except asyncio.CancelledError:
-        #             pass
-        #         self.message_sender_task = None
-        #
-        #     # 清除当前客户端
-        #     if self.current_client == websocket:
-        #         self.current_client = None
-        #     print(f"客户端 {client_ip} 已移除")
-
-    async def monitor_user_activity(self, websocket):
-        """监控用户活动状态，发送提醒消息"""
-        print("启动用户活动监控")
-
+        print("启动后台事件监视器")
         while self.is_running and self.current_client == websocket:
+
             try:
-                # 检查用户是否超过1分钟没有活动
-                if (self.last_user_activity and
-                        datetime.now() - self.last_user_activity > timedelta(seconds=30) and
-                        not self.reminder_sent):
 
-                    # 发送提醒消息
-                    summaries = await self.feeling.summary_from_message_bank(self.memory)
-                    print(summaries)
+                await self.background_task.handler(self.last_remind_time)
 
-
-                    # 标记已发送提醒
-                    self.reminder_sent = True
-
-                    # 记录提醒发送时间
-                    reminder_time = datetime.now()
-
-                    # 等待用户响应，如果再过1分钟仍无响应则不再处理
-                    while (self.is_running and
-                           self.current_client == websocket and
-                           datetime.now() - reminder_time < timedelta(minutes=1) and
-                           not self.last_user_activity > reminder_time):
-                        await asyncio.sleep(5)  # 每5秒检查一次
-
-                    # 如果用户仍然没有响应，重置状态等待下一次可能的连接
-                    if (self.last_user_activity <= reminder_time and
-                            self.current_client == websocket):
-                        print("用户长时间未响应，停止发送提醒")
-
-                # 短暂休眠，避免过度占用CPU
-                await asyncio.sleep(5)  # 每5秒检查一次用户活动
-
-            except websockets.exceptions.ConnectionClosed:
-                print("客户端已断开，停止活动监控")
-                break
             except Exception as e:
-                print(f"活动监控错误: {e}")
-                await asyncio.sleep(5)
+                print(f"启动后台监视器失败：{e}")
+
+            await asyncio.sleep(delay=10)
+
 
     async def send_pending_messages(self, websocket):
         """发送待处理消息"""
         print("启动消息发送器")
 
         while self.is_running and self.current_client == websocket:
-
-
             try:
                     # 发送所有消息
                 while len(self.reply.message_list_dict["not_send"]) != 0:
@@ -185,7 +121,7 @@ class ChatServer:
 
         try:
             # 使用新的API，不需要path参数
-            async with websockets.serve(self.handle_client, host, port):
+            async with websockets.serve(self.handle_client, host, port,ping_interval=20,  ping_timeout=60, close_timeout=10):
                 await asyncio.Future()  # 永久运行
         except KeyboardInterrupt:
             print("\n服务器正在关闭...")
@@ -199,7 +135,6 @@ async def main():
     tools = ToolManager()
     memory = KuMemory()
     feeling = KuFeeling(messages=reply)
-
 
     server = ChatServer(reply,tools, feeling, memory)
     await server.start_server()
