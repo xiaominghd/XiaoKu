@@ -56,12 +56,12 @@ class ToolManager:
         # else:
         #     return "小酷在执行这个任务的时候花费了太多的时间呢~"
 
-def main():
-
-    manager = ToolManager()
-
-    result =manager.call_tool(tool_name="news_search",arguments={'content':"国内热点新闻"})
-    print(result)
+# def main():
+#
+#     manager = ToolManager()
+#
+#     result =manager.call_tool(tool_name="news_search",arguments={'content':"国内热点新闻"})
+#     print(result)
 
 
 if __name__=="__main__":

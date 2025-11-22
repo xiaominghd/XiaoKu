@@ -117,22 +117,15 @@ class XiaoKu:
 
         new_msg = Msg(role="user", content=message, is_send=True)
         self.reply.message_list_dict["is_send"].append(new_msg)  # 将当前事件插入到回复列表当中
-
-        for m in self.reply.message_list_dict["is_send"]:
-            print(f"{m.role}:{m.content}")
-
         self.round += 1
 
-        self.events.check_current_conversation(conversations=[new_msg])  # 确定当前话题
-        self.events.current_event.history.append(new_msg)  # 更新事件列表
+        await self.events.check_current_conversation(conversation=new_msg)  # 确定当前话题，在这个环节里面完成任务的更新
 
-        flag = random.randint(1, 2)
+        flag = random.randint(1, 3)
 
-        if flag == 2:
-            print("使用主动询问逻辑")
+        if flag == 3:
             await self.ask()
         else:
-            print("使用被动响应逻辑")
             await self.response()
 
     async def response(self):
@@ -141,7 +134,6 @@ class XiaoKu:
         messages = ([{"role": "system","content": self.system_prompt.system_prompt_str()}]
                     + [{"role": info.role, "content": info.content} for info in self.reply.message_list_dict["is_send"]])
         print(messages)
-
         response = get_deepseek_answer(messages)
 
         if self._is_tool_call(response):

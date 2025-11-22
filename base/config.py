@@ -5,6 +5,7 @@
 """
 import os
 from dotenv import load_dotenv
+from openai import OpenAI
 
 # 加载环境变量
 load_dotenv()
@@ -40,3 +41,9 @@ es_pwd = os.getenv('ES_PWD')
 
 host = os.getenv('HOST', 'localhost')
 port = int(os.getenv('PORT', 8765))
+
+qwen_client = OpenAI(
+    # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
+    api_key=ali_api_key,
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+)

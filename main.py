@@ -24,13 +24,15 @@ class ChatServer:
         self.agent = XiaoKu(tool=self.tools, reply=self.reply, feeling=self.feeling, memory=self.memory, events=self.events)
         self.background_task = BackgroundTaskHandler(self.agent)
 
-        self.last_remind_time = datetime.now()
+        self.last_remind_time = time.time()
         self.e_conversation_list = []
 
 
         # 消息发送器任务
         self.message_sender_task = None
         self.is_running = False
+
+        self._task_lock = asyncio.Lock()
 
 
     async def handle_client(self, websocket):
@@ -88,25 +90,34 @@ class ChatServer:
         # 处理客户端消息
         async for message in websocket:
             logger.info(msg = f"收到来自 {client_ip} 的消息: {message}")
-            self.last_remind_time = datetime.now()
-            self.is_send = True
+            self.last_remind_time = time.time()
 
             await self.agent.chat(message)
 
     async def background_task_monitor(self, websocket):
-
+        """后台事件监视器"""
         logger.info(msg="启动后台事件监视器")
-        while self.is_running and self.current_client == websocket and self.is_send:
 
 
+        while self.is_running and self.current_client == websocket:
             try:
 
-                await self.background_task.handler()
+                current_time = time.time()  # 获取当前时间戳
+
+                if current_time - self.last_remind_time < 120:  # 60内是否有用户的消息
+
+                    async with self._task_lock:
+                        logger.debug("执行后台任务")
+                        await self.background_task.handler()
+                else:
+                    logger.debug("未达到执行间隔，跳过本次执行")
 
             except Exception as e:
-                logger.error(msg=f"启动后台监视器失败：{e}")
+                logger.error(msg=f"后台任务执行失败：{e}")
+                # 可以选择添加重试逻辑或错误恢复
 
-            await asyncio.sleep(delay=10)  # 十秒监控一次
+            # 等待下一次检查
+            await asyncio.sleep(60)
 
 
     async def send_pending_messages(self, websocket):

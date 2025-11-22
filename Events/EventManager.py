@@ -44,14 +44,22 @@ class EventBank:
             logger.error(f"事件列表初始化失败。")
 
     async def clear(self):
-        pass
+
+        finish_events = self.finished_events + [self.current_event]
+
+        self.prepared_events = []
+        self.current_event = None
+        self.prepared_events_mapper = {}
+        self.finished_events = []  # 清空所有事件
+
+        return finish_events
 
     # 事件列表更新
-    def update(self, event_name:str):
+    async def update(self, event_name:str):
 
         event = self.prepared_events_mapper[event_name]  # 通过映射表的方式找到当前数据
 
-        self.current_event = event
+        self.current_event = event  # 当前事件需要进行一次总结
         self.finished_events.append(event)
 
         # self.prepared_events_mapper.pop(event_name)  # 映射表不pop出去，防止再召回的情况报键不存在
@@ -62,12 +70,17 @@ class EventBank:
         # 更新已经完成的话题
         self.finished_events = [event for event in self.finished_events if event != self.current_event]
 
+
     # 判断是否是当前话题
-    def check_current_conversation(self, conversations: List[Msg]):
+    async def check_current_conversation(self, conversation: Msg):
 
         # 将当前的对话加入到事件当中去
         role_mapper = {"user": "主人", "assistant": "小酷"}
-        conversation_str = "\n".join([f"{role_mapper[m.role]}:{m.content}" for m in conversations])
+
+        pre_conversation = self.current_event.history
+
+        conversation_str = "\n".join([f"{role_mapper[m.role]}:{m.content}" for m in pre_conversation+[conversation]])
+        # 将当前的会话与之前的对话进行拼接
 
         other_event = [e.name for e in self.prepared_events + self.finished_events]
 
@@ -136,25 +149,39 @@ class EventBank:
    - 如果用户未指定新话题（如只说"换个话题"但未说换什么），默认返回其他话题列表中的第一个话题
 """
 
-        answer = get_qwen_flash_answer(prompt)  # 获取到当前的话题
-
+        answer = get_qwen_flash_answer(prompt)
 
         if answer in other_event:  # 当前正在进行状态切换
+
             logger.info(f"将当前话题：{self.current_event.name} 切换至 {answer}")
-            self.update(answer)
-            return True
+
+            await self.update(answer)  # 仅调整位置
+
+            asyncio.create_task(self.update_summary(self.prepared_events_mapper[answer]))  # 只更新总结
+            self.current_event.history.append(conversation)
+
+            return self.prepared_events_mapper[answer]  # 返回的数据类型是不同的
+
+
         elif answer not in other_event and answer != self.current_event.name: # 当前正在创建新事件
+
             new_event = Event(name=answer)
 
             self.finished_events.append(self.current_event)
+
+            asyncio.create_task(self.update_summary(self.current_event))  # 更新总结信息
+
             self.current_event = new_event
-            return True
+
+            self.current_event.history.append(conversation)
+
+            return self.prepared_events[answer]
 
         elif answer == "结束":
-            self.clear()
-            return True
+            events = self.clear()
+            return events
 
-        return False
+        return None
 
     # 当前话题深度挖掘
     @staticmethod
@@ -230,7 +257,9 @@ class EventBank:
 <CONTEXT>
 """
         prompt = prompt.replace("<TOPIC>", topic).replace("<SUMMARY>", summary).replace("<CONTEXT>", conversation_str)
-        print(prompt)
+
+
+
         answer = get_deepseek_answer(message=[{"role":"user", "content":prompt}])
 
         try:
@@ -369,47 +398,55 @@ class EventBank:
             logger.error(f"话题重排序时解构出错，错误信息为：{e}")
 
     # 更新事件总结信息
-    async def update_summary(self):
+    @staticmethod
+    async def update_summary(event:Event):
 
-        prompt = r"""你是一个专业的对话摘要生成助手，你的任务是结合历史总结和当前对话中生成一个简洁自然的对话摘要。
+        if len(event.history) > 20:
 
-# 摘要生成原则：
-结合历史与当前：综合历史总结和当前对话内容，确保摘要连贯反映完整的对话进展
-保持连贯叙事：用流畅的段落形式描述对话发展脉络，不要用列表或JSON
-聚焦关键信息：只保留用户需求、重要决定、个人偏好、待办事项等实质性内容
-忽略过程细节：省略问候语、确认词、思考过程等无关内容
-明确责任归属：清楚区分用户要做的事和助手要做的任务
+            prompt = r"""你是一个专业的对话摘要生成助手，你的任务是结合历史总结和当前对话中生成一个简洁自然的对话摘要。
+    
+    # 摘要生成原则：
+    结合历史与当前：综合历史总结和当前对话内容，确保摘要连贯反映完整的对话进展
+    保持连贯叙事：用流畅的段落形式描述对话发展脉络，不要用列表或JSON
+    聚焦关键信息：只保留用户需求、重要决定、个人偏好、待办事项等实质性内容
+    忽略过程细节：省略问候语、确认词、思考过程等无关内容
+    
+    # 需要包含的关键要素（请严格基于对话内容，不要编造）：
+    用户身份特征：姓名、称呼等个人特征
+    核心需求：用户在历史及当前对话中想要解决的主要问题
+    重要决定：双方达成的共识或做出的选择
+    用户偏好：用户明确表达的喜欢/不喜欢、习惯等
+    待办事项：需要后续跟进的任务
+    
+    # 输出要求：
+    如果历史总结和当前对话内容均为空，输出空字符串
+    如果历史总结为空，当前对话不为空，请你仅根据当前对话进行总结。
+    请保证生成的结果的长度在3个连贯段落以内，语言简洁专业
+    只输出摘要内容，不要添加其他任何信息
+    对话内容：
+    <历史总结>
+    <HISTORY>
+    </历史总结>
+    
+    <当前对话>
+    <CONVERSATION>
+    </当前对话>
+    """
+            role_mapper = {"user": "主人", "assistant": "小酷"}
 
-# 需要包含的关键要素（请严格基于对话内容，不要编造）：
-用户身份特征：姓名、称呼、重要个人特征
-核心需求：用户在历史及当前对话中想要解决的主要问题
-重要决定：双方达成的共识或做出的选择
-用户偏好：用户明确表达的喜欢/不喜欢、习惯等
-待办事项：需要后续跟进的任务
+            msg_list_str = "\n".join([f"{role_mapper[m.role]}:{m.content}" for m in event.history])
+            history_length = len(event.history)
 
-# 输出要求：
-如果历史对话和当前对话内容均为空，输出空字符串
-如果有对话内容，生成2-3个连贯段落，语言简洁专业
-确保摘要既能反映历史总结的关键延续，也能体现当前对话的最新进展
-只输出摘要内容，不要添加其他任何信息
-对话内容：
-<历史总结>
-<HISTORY>
-</历史总结>
+            query = prompt.replace("<HISTORY>", event.summary).replace("<CONVERSATION>", msg_list_str)
 
-<当前对话>
-<CONVERSATION>
-</当前对话>
-"""
-        role_mapper = {"user": "主人", "assistant": "小酷"}
+            new_summary = get_deepseek_answer(message=[{"role":"user", "content":query}])
 
-        msg_list_str = "\n".join([f"{role_mapper[m.role]}:{m.content}" for m in self.current_event.history])
+            event.summary = new_summary
 
-        query = prompt.replace("<HISTORY>", self.current_event.history).replace("<CONVERSATION>", msg_list_str)
+            for _ in range(history_length):  # 采用pop的形式防止漏掉信息
+                event.history.pop(0)
 
-        new_summary = get_deepseek_answer(message=[{"role":"user", "content":query}])
-
-        self.current_event.summary = new_summary
+        return event
 
     # 从自然语言中初始化事件的列表
     @staticmethod

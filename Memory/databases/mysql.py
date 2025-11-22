@@ -12,6 +12,7 @@ import pymysql
 from base.config import *
 from typing import Optional
 import re
+from base.api import *
 
 
 class HistoryTableManager:

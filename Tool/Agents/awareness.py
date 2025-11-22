@@ -49,25 +49,6 @@ class AwareAgent:
             self.result = None
             return
 
-async def main():
-
-    content = r"""主人是一个在重庆上班的上班族，今年28岁。从事程序员工作，平时喜欢了解一些科技类新闻。
-周末喜欢和喜欢打麻将，美食，钓鱼和炒股等等。
-主人最近上班比较忙碌，不仅在完成工作相关的内容，还在开发一个叫做小酷的智能聊天机器人。"""
-
-    AA = AwareAgent()
-
-    asyncio.create_task(AA.execute(content=content))
-    while True:
-
-        if AA.status.startswith("执行完成"):
-
-            break
-        else:
-            print("工具正在执行")
-
-        await asyncio.sleep(5)
-
 if __name__=="__main__":
     asyncio.run(main())
 

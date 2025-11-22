@@ -19,12 +19,6 @@ from log.logger import get_logger
 coze = Coze(auth=TokenAuth(token=coze_api_token), base_url=COZE_CN_BASE_URL)
 logger = get_logger()
 
-qwen_client = OpenAI(
-    # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
-    api_key=ali_api_key,
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-)
-
 def get_deepseek_answer(message:List):
     client = OpenAI(
         api_key=deepseek_api_key,
@@ -76,7 +70,7 @@ def get_qwen_embedding(text):
         "input": text
     }
     headers = {
-        "Authorization": "Bearer sk-vusnpunxueynoldmcvgeelapmnfyraykvirgxhibmodjbybn",
+        "Authorization": f"Bearer {api_token}",
         "Content-Type": "application/json"
     }
 
@@ -132,9 +126,8 @@ def ku_speaking(history, text):
 
     except Exception as e:
 
-        print(f"在调用千问模型的时候出错:{e}")
+        logger.error(f"在调用千问模型的时候出错:{e}")
         return None
-
 
 if __name__=="__main__":
     history = r"""
@@ -142,7 +135,5 @@ if __name__=="__main__":
 小酷：下午好主人"""
     text = r"""告诉主人今天记得了解AI科技的消息"""
     start_time = time.time()
-    print(ku_speaking(history, text))
-    end_time = time.time()
 
-    print(end_time-start_time)
+    print(get_qwen_embedding(text))
