@@ -167,6 +167,8 @@ class EventBank:
 
             new_event = Event(name=answer)
 
+            self.prepared_events_mapper[answer] = new_event
+
             self.finished_events.append(self.current_event)
 
             asyncio.create_task(self.update_summary(self.current_event))  # 更新总结信息
@@ -175,7 +177,7 @@ class EventBank:
 
             self.current_event.history.append(conversation)
 
-            return self.prepared_events[answer]
+            return self.prepared_events_mapper[answer]
 
         elif answer == "结束":
             events = self.clear()
@@ -202,74 +204,74 @@ class EventBank:
         return result
 
     # 主动引导话术生成
-    async def generate_conversation(self):
-
-        current_info = self.current_event
-
-        topic = f"{current_info.name}\n 话题背景：{current_info.back_ground}"
-        summary = f"{current_info.summary}"
-
-        role_mapper = {"user": "主人", "assistant": "小酷"}
-        conversation_str = "\n".join([f"{role_mapper[m.role]}:{m.content}" for m in current_info.history])
-
-        prompt = r"""# 任务
-你的任务是根据用户历史对话和当前话题信息，优先基于最新对话内容分析需要深入探讨的话题方向。
-如果当前对话具有深度挖掘价值，则延续当前话题；如果无深度挖掘意义，则转向背景信息寻找子话题。最终生成一条自然连贯的推荐话术与用户互动。
-
-# 工作流程
-
-## 1. 当前对话优先分析
-- **深度价值评估**：首先专注分析用户最新对话内容，判断是否具有深度挖掘意义。评估标准包括：
-  - 话题是否包含未充分讨论的技术细节、应用场景或影响维度
-  - 用户是否表现出持续兴趣或提出后续问题
-  - 是否存在可延伸的具体案例或实践应用
-- **延续性判断**：如果当前对话具备深度挖掘价值，立即锁定该方向进行深入拓展
-
-## 2. 话题深度挖掘策略
-- **当前话题延续**（优先执行）：
-  - 基于最新对话的具体内容，挖掘相关但未讨论的细节层面
-  - 结合用户身份特征和已知兴趣点，提出更深入的技术探讨
-  - 联系行业最新动态，提供时效性强的延伸方向
-- **背景话题转向**（仅当当前话题无挖掘价值时启用）：
-  - 综合分析话题背景信息和历史会话总结
-  - 识别与用户背景相关但未涉及的新子话题
-  - 确保话题转换自然且符合对话逻辑
-
-## 3. 话术生成规范
-- **单条多句结构**：生成唯一一条推荐话术，可采用多句组合形式，包括：
-  - 承接句：自然衔接最新对话内容
-  - 问题句：提出开放式深入问题
-  - 引导句：提供讨论方向或案例参考
-- **对话连续性**：确保话术与最新对话内容直接相关，保持对话流畅度
-- **深度引导性**：话术应能有效引导用户分享观点或展开详细讨论
-
-# 返回数据
-以JSON格式返回单条推荐话术，话术可为多句组合：
-{
-  "result": "完整的一条推荐话术"
-}
-<输入>
-用户的当前的话题名称以及背景
-<TOPIC>
-用户和助手历史会话的总结
-<SUMMARY>
-用户和助手最新的对话信息
-<CONTEXT>
-"""
-        prompt = prompt.replace("<TOPIC>", topic).replace("<SUMMARY>", summary).replace("<CONTEXT>", conversation_str)
-
-
-
-        answer = get_deepseek_answer(message=[{"role":"user", "content":prompt}])
-
-        try:
-            answer = json.loads(answer)["result"]
-            ku_answer = ku_speaking(history=conversation_str, text=answer)
-            return ku_answer
-
-        except Exception as e:
-            print(f"解析返回的结果失败：{e}")
-            return None
+#     async def generate_conversation(self):
+#
+#         current_info = self.current_event
+#
+#         topic = f"{current_info.name}\n 话题背景：{current_info.back_ground}"
+#         summary = f"{current_info.summary}"
+#
+#         role_mapper = {"user": "主人", "assistant": "小酷"}
+#         conversation_str = "\n".join([f"{role_mapper[m.role]}:{m.content}" for m in current_info.history])
+#
+#         prompt = r"""# 任务
+# 你的任务是根据用户历史对话和当前话题信息，优先基于最新对话内容分析需要深入探讨的话题方向。
+# 如果当前对话具有深度挖掘价值，则延续当前话题；如果无深度挖掘意义，则转向背景信息寻找子话题。最终生成一条自然连贯的推荐话术与用户互动。
+#
+# # 工作流程
+#
+# ## 1. 当前对话优先分析
+# - **深度价值评估**：首先专注分析用户最新对话内容，判断是否具有深度挖掘意义。评估标准包括：
+#   - 话题是否包含未充分讨论的技术细节、应用场景或影响维度
+#   - 用户是否表现出持续兴趣或提出后续问题
+#   - 是否存在可延伸的具体案例或实践应用
+# - **延续性判断**：如果当前对话具备深度挖掘价值，立即锁定该方向进行深入拓展
+#
+# ## 2. 话题深度挖掘策略
+# - **当前话题延续**（优先执行）：
+#   - 基于最新对话的具体内容，挖掘相关但未讨论的细节层面
+#   - 结合用户身份特征和已知兴趣点，提出更深入的技术探讨
+#   - 联系行业最新动态，提供时效性强的延伸方向
+# - **背景话题转向**（仅当当前话题无挖掘价值时启用）：
+#   - 综合分析话题背景信息和历史会话总结
+#   - 识别与用户背景相关但未涉及的新子话题
+#   - 确保话题转换自然且符合对话逻辑
+#
+# ## 3. 话术生成规范
+# - **单条多句结构**：生成唯一一条推荐话术，可采用多句组合形式，包括：
+#   - 承接句：自然衔接最新对话内容
+#   - 问题句：提出开放式深入问题
+#   - 引导句：提供讨论方向或案例参考
+# - **对话连续性**：确保话术与最新对话内容直接相关，保持对话流畅度
+# - **深度引导性**：话术应能有效引导用户分享观点或展开详细讨论
+#
+# # 返回数据
+# 以JSON格式返回单条推荐话术，话术可为多句组合：
+# {
+#   "result": "完整的一条推荐话术"
+# }
+# <输入>
+# 用户的当前的话题名称以及背景
+# <TOPIC>
+# 用户和助手历史会话的总结
+# <SUMMARY>
+# 用户和助手最新的对话信息
+# <CONTEXT>
+# """
+#         prompt = prompt.replace("<TOPIC>", topic).replace("<SUMMARY>", summary).replace("<CONTEXT>", conversation_str)
+#
+#
+#
+#         answer = get_deepseek_answer(message=[{"role":"user", "content":prompt}])
+#
+#         try:
+#             answer = json.loads(answer)["result"]
+#             ku_answer = ku_speaking(history=conversation_str, text=answer)
+#             return ku_answer
+#
+#         except Exception as e:
+#             print(f"解析返回的结果失败：{e}")
+#             return None
 
     # 整体事件处理机制
     async def get_conversation_guide(self):

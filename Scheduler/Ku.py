@@ -11,6 +11,40 @@ from Tool.Agents.awareness import *
 from cozepy import  ChatEventType
 from Events.EventManager import *
 import random
+from base.qwen_chat import *
+import re
+
+def split_text(text):
+    pattern = r'[^。！…]*(?:[。！…]+|$)'
+    result = re.findall(pattern, text)
+    # 过滤空字符串
+    result = [s for s in result if s]
+    return result
+
+
+def select_sentences(response_list):
+    if not response_list:
+        return []
+
+    # 确保第一句话一定返回
+    selected = [response_list[0]]
+
+    # 如果只有一句话，直接返回
+    if len(response_list) == 1:
+        return selected
+
+    # 从第二句话开始，随机选择50%
+    remaining_sentences = response_list[1:]
+
+    # 计算需要选择的句子数量（向上取整）
+    num_to_select = max(1, round(len(remaining_sentences) * 0.5))
+
+    # 随机选择句子，但保持原有顺序
+    indices = sorted(random.sample(range(len(remaining_sentences)), num_to_select))
+    selected.extend([remaining_sentences[i] for i in indices])
+
+    return selected
+
 
 class SystemPrompt:
 
@@ -121,20 +155,17 @@ class XiaoKu:
 
         await self.events.check_current_conversation(conversation=new_msg)  # 确定当前话题，在这个环节里面完成任务的更新
 
-        flag = random.randint(1, 3)
-
-        if flag == 3:
-            await self.ask()
-        else:
-            await self.response()
+        await self.response()
 
     async def response(self):
 
         self.init_agent()  # 需要获取当前的话题以及背景
-        messages = ([{"role": "system","content": self.system_prompt.system_prompt_str()}]
-                    + [{"role": info.role, "content": info.content} for info in self.reply.message_list_dict["is_send"]])
-        print(messages)
-        response = get_deepseek_answer(messages)
+
+        history = [{"role":m.role, "content":m.content} for m in self.reply.message_list_dict["is_send"]]
+        # 构建历史信息
+
+
+        response = chat_with_qwen(history=history)
 
         if self._is_tool_call(response):
             # 提取工具调用信息
@@ -179,21 +210,12 @@ class XiaoKu:
                         self.events.current_event.history.append(Msg(role='assistant', content=response, is_send=False))
 
         else:
-            self.reply.append(Msg(role='assistant', content=response, is_send=False))
+
+            response_list = split_text(response)
+            response_list = select_sentences(response_list)
+            for r in response_list:
+                self.reply.append(Msg(role='assistant', content=r, is_send=False))
             self.events.current_event.history.append(Msg(role='assistant', content=response, is_send=False))
-
-    async def ask(self):
-
-        try:
-            contents = await self.events.generate_conversation()
-            for content in contents:
-                self.reply.append(Msg(role='assistant', content=content, is_send=False))
-                self.events.current_event.history.append(Msg(role='assistant', content=content, is_send=False))
-
-        except Exception as e:
-
-            await self.response()
-            print(f"主动问询时出错：{e}")
 
 
 async def main():

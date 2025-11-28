@@ -54,7 +54,7 @@ class HistoryTableManager:
     def create_table(self):
 
         connection = self.get_connection()
-        try:
+        try:  # 查找今天日内的聊天情况
             with connection.cursor() as cursor:
                 create_table_sql = """
                         CREATE TABLE IF NOT EXISTS history_table (
@@ -71,6 +71,10 @@ class HistoryTableManager:
             print(f"创建表时出错: {e}")
         finally:
             connection.close()
+
+
+
+
 
     async def insert_record(self, id, status, envent):
 

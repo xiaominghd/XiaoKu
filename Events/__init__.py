@@ -7,11 +7,12 @@ from typing import List
 
 class Event:
 
-    def __init__(self, name:str=None, history:List=None, summary:str=None, back_ground:str=None, score:int=None):
+    def __init__(self, name:str=None, history=None, summary:str=None, back_ground:str=None, score:int=None):
 
         self.name = name
 
         self.history = history
+
         if history is None:
             self.history = []
 
@@ -20,4 +21,6 @@ class Event:
             self.summary = ""
 
         self.back_ground = back_ground
+        if self.back_ground is None:
+            self.back_ground = ""
 
