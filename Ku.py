@@ -100,7 +100,6 @@ class XiaoKu:
         create_time = datetime.now()
 
         response_list = split_text(ku_response)
-        response_list = select_sentences(response_list)  # 随机返回一些句子
 
         for r in response_list:
             self.reply.not_send.append(SingleContext(create_time, role='assistant', content=r))

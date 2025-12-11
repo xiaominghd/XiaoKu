@@ -47,17 +47,26 @@ class Context:
 
                 self.cache.append(msg)
 
-    def trans_cache2openai(self):
+    def trans_cache2openai(self, load_outer=True):
 
         result = []
 
-        for c in self.cache:
-            if c.role == "outer":
-                result.append({"role":"user","content":"[系统上下文开始]"})
-                result.append({"role":"assistant", "content":f"{c.content}[系统上下文结束]"})
+        if load_outer:
 
-            else:
-                result.append({"role":c.role, "content":c.content})
+            for c in self.cache:
+                if c.role == "outer":
+                    result.append({"role":"user","content":"[系统上下文开始]"})
+                    result.append({"role":"assistant", "content":f"{c.content}[系统上下文结束]"})
+
+                else:
+                    result.append({"role":c.role, "content":c.content})
+        else:
+
+            for c in self.cache:
+                if c.role == "outer":
+                    continue
+                else:
+                    result.append({"role":c.role, "content":c.content})
 
         return result
 

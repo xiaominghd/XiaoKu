@@ -203,6 +203,7 @@ class AwareAgentWork:
 
         content = {"history":recent_event, "profile":user_profile}
         infos = self.execute(content)
+        logger.info(infos)
 
         event_list = []
 

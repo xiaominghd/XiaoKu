@@ -3,6 +3,8 @@
 @date: 2025/12/1
 @description: 
 """
+import json
+
 from Context import *
 from base.api import *
 class Event:
@@ -63,6 +65,27 @@ class Event:
 
         summary = get_qwen_max_answer(prompt)
         self.summary = summary
+
+    async def get_key_point(self):
+        # 根据历史信息总结一些
+        infos = self.history.trans_cache2openai(load_outer=False)
+
+        prompt = f"""你是一个聪明的助手，你的任务是根据用户和助手的对话，生成当前对话的2-3个主题。这些主题将会被用于在历史信息中检索具有相似主题的事件。
+请你以json的形式进行返回，返回示例，除此之外不要返回其他信息:{{"result":["主题1","主题2"]}}
+用户和助手的对话情况如下：
+{infos}"""
+
+        info = await get_qwen_max_answer_async(prompt)
+
+        try:
+
+            info = json.loads(info)
+            return info["result"]
+
+        except Exception as e:
+            logger.error(f"获取关键信息失败：{e}")
+            return []
+
 
 
 

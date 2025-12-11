@@ -1,15 +1,8 @@
-import asyncio
-import json
-import time
-from datetime import datetime
 import websockets
 from collections import deque
-import logging
 from Agents.awareness import *
+from BackGroundTask.memory_augment import *
 from Ku import *
-from base.api import *
-from BackGroundTask.conversation_guidance_manager import *
-
 
 class ChatServer:
     def __init__(self, reply: MessageBank, events: EventBank, memory: MemoryBank):
@@ -176,18 +169,18 @@ class ChatServer:
                 # 发送所有消息
                 while len(self.reply.not_send) != 0:
                     message = self.reply.send()
-                    await asyncio.sleep(0.1 * len(message.content))
+                    await asyncio.sleep(0.05 * len(message.content))
 
                     # 直接发送完整消息
                     info = {
                         "type": message.role,
-                        "message": message.content,
+                        "message": message.content.strip("\n"),
                         "timestamp": datetime.now().isoformat()
                     }
                     await websocket.send(json.dumps(info))
                     # 消息之间的间隔
 
-                    logger.info(f"已发送消息: {message.content[:50]}...")
+                    logger.info(f"已发送消息: {message.content[:50]}")
 
                 # 短暂休眠，避免过度占用CPU
                 await asyncio.sleep(0.1)
@@ -207,28 +200,13 @@ class ChatServer:
 
             async with self.task_lock:
 
-                await get_conversation_guidance(self.agent)
+                info = await retrieve(self.agent.memory, self.agent.events.current_event)
+                # if info is not None:
+                #     await self.agent.chat(info.content)
+                #     await asyncio.sleep(1)
                 logger.info("开始执行对话指引任务")
 
             await asyncio.sleep(20)
-        #
-        #
-        #
-        # while self.is_running and self.current_client == websocket:
-        #     try:
-        #         current_time = time.time()
-        #
-        #         # 检查是否需要发送提醒
-        #         if current_time - self.last_remind_time > 30 and self.agent.events.current_event is not None:
-        #             logger.info("发送提醒消息")
-        #             await self.agent.chat(message="")
-        #             self.last_remind_time = current_time
-        #
-        #     except Exception as e:
-        #         logger.error(f"后台任务执行失败：{e}")
-        #
-        #     # 等待下一次检查
-        #     await asyncio.sleep(5)
 
     async def start_server(self):
         """启动WebSocket服务器"""

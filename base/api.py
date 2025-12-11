@@ -27,7 +27,6 @@ qwen_client = OpenAI(
 
 async def get_deepseek_answer(message: str):
     loop = asyncio.get_running_loop()
-    print(message)
 
     def _call_openai():
         # 在线程内部创建客户端
@@ -48,6 +47,25 @@ async def get_deepseek_answer(message: str):
 
     response = await loop.run_in_executor(None, _call_openai)
     return response.choices[0].message.content
+
+async def get_qwen_max_answer_async(message: str):
+    loop = asyncio.get_running_loop()
+
+    def _call_openai():
+        # 在线程内部创建客户端
+        completion = qwen_client.chat.completions.create(
+
+            model="qwen-max",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": message},
+            ]
+        )
+
+        return completion
+
+    completion = await loop.run_in_executor(None, _call_openai)
+    return json.loads(completion.model_dump_json())['choices'][0]["message"]["content"]
 
 def get_qwen_max_answer(query):  # 较小的模型，用于进行意图识别和提取参数
 

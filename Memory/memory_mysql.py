@@ -8,6 +8,15 @@ import pymysql
 from base.api import *
 from typing import Optional, Tuple
 from datetime import datetime, date
+from typing import List
+
+
+def calculate_duration(start_time: datetime, end_time: datetime) -> int:
+
+    duration = end_time - start_time
+    return max(1, int(duration.total_seconds() / 60))  # 至少1分钟
+
+
 class HistoryTableManager:
 
     def __init__(self):
@@ -126,20 +135,6 @@ class HistoryTableManager:
             print(f"获取事件详细信息出错: {e}")
             return None
 
-    def calculate_duration(self, start_time: datetime, end_time: datetime) -> int:
-        """
-        计算两个时间之间的分钟数
-
-        Args:
-            start_time: 开始时间
-            end_time: 结束时间
-
-        Returns:
-            持续分钟数
-        """
-        duration = end_time - start_time
-        return max(1, int(duration.total_seconds() / 60))  # 至少1分钟
-
     def prepare_event_data(self, event_id, event) -> Optional[dict]:
 
         try:
@@ -154,7 +149,7 @@ class HistoryTableManager:
             create_time= event.history.cache[0].create_time
             end_time = event.history.cache[-1].create_time
             # 计算持续时间
-            exist_minutes = self.calculate_duration(create_time, end_time)
+            exist_minutes = calculate_duration(create_time, end_time)
 
             # 生成ID
             # 准备数据
