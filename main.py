@@ -1,7 +1,11 @@
+import random
+
 import websockets
 from collections import deque
 from Agents.awareness import *
 from BackGroundTask.memory_augment import *
+from BackGroundTask.conversation_guidance_manager import *
+from BackGroundTask.weak_up import *
 from Ku import *
 
 class ChatServer:
@@ -48,9 +52,8 @@ class ChatServer:
         self.is_running = True
         self.message_sender_task = asyncio.create_task(self.send_pending_messages(websocket))
         asyncio.create_task(self.background_task_monitor(websocket))
-        # 初始化事件
-        event_bank = await AwareAgentWork().get_info()
-        self.agent.events = event_bank
+
+        self.agent = await AwareAgentWork().get_info(self.agent)  # 初始化Agent
 
         logger.info("初始化小酷完成")
         self.agent.reply.not_send.append(
@@ -139,7 +142,7 @@ class ChatServer:
                 await self.process_message_buffer()
 
             logger.info("开始进行数据入库")
-            self.agent.clear()
+            await self.agent.clear()
         except Exception as e:
             logger.error(f"执行agent.clear()时发生错误: {e}")
         finally:
@@ -174,7 +177,7 @@ class ChatServer:
                     # 直接发送完整消息
                     info = {
                         "type": message.role,
-                        "message": message.content.strip("\n"),
+                        "message": message.content.strip("\n").strip(" "),
                         "timestamp": datetime.now().isoformat()
                     }
                     await websocket.send(json.dumps(info))
@@ -200,13 +203,25 @@ class ChatServer:
 
             async with self.task_lock:
 
-                info = await retrieve(self.agent.memory, self.agent.events.current_event)
-                # if info is not None:
-                #     await self.agent.chat(info.content)
-                #     await asyncio.sleep(1)
-                logger.info("开始执行对话指引任务")
+                if time.time() - self.last_remind_time < 60:
 
-            await asyncio.sleep(20)
+                    await retrieve(self.agent)
+                    logger.info("开始执行检索任务任务")
+
+                    await get_conversation_guidance(self.agent)
+                    logger.info("对话指引任务执行结束")
+
+                    await self.agent.events.current_event.update_history()
+                    logger.info("更新上下文结束")
+
+                if 100 > time.time() - self.last_remind_time > 60:
+                    info = await weak_up_client(self.agent)
+                    logger.info("唤醒任务结束")
+
+
+            await asyncio.sleep(random.randint(30, 60))
+
+
 
     async def start_server(self):
         """启动WebSocket服务器"""
@@ -227,7 +242,7 @@ class ChatServer:
             ):
                 await asyncio.Future()  # 永久运行
         except KeyboardInterrupt:
-            print("\n服务器正在关闭...")
+            logger.info("\n服务器正在关闭...")
             self.is_running = False
             # 如果还有连接的客户端，也执行清理
             if self.current_client:

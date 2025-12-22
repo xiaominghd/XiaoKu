@@ -48,7 +48,7 @@ async def get_deepseek_answer(message: str):
     response = await loop.run_in_executor(None, _call_openai)
     return response.choices[0].message.content
 
-async def get_qwen_max_answer_async(message: str):
+async def get_qwen_max_answer_async(message: str, enable_think=False, enable_search=False):
     loop = asyncio.get_running_loop()
 
     def _call_openai():
@@ -59,7 +59,14 @@ async def get_qwen_max_answer_async(message: str):
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": message},
-            ]
+            ],
+        extra_body = {
+            "parameters": {
+                "enable_think": enable_think,  # 开启思考
+                "enable_search": enable_search
+            }
+        }
+
         )
 
         return completion
@@ -87,7 +94,7 @@ def get_qwen_flash_answer(query):  # 较小的模型，用于进行意图识别�
 
         model="qwen-flash",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "system", "content": "你是一个聪明的助手"},
             {"role": "user", "content": query},
         ]
     )
@@ -118,7 +125,36 @@ def generate_timestamp_key():
     random_part = ''.join(random.choices(string.digits, k=3))  # 3位随机数
     return timestamp + random_part
 
+def trans_messages2openai(messages, load_outer=True):
+
+    results = []
+
+    for m in messages:
+
+        if m.role == "outer":
+
+            if not load_outer or m.content == "":
+
+                continue
+
+            else:
+                results.append({"role":"user", "content":"[系统上下文开始]"})
+                results.append({"role":"assistant", "content":f"{m.content}[系统上下文结束]"})
+        else:
+
+            results.append({"role":m.role, "content":m.content})
+
+
+
+    return results
+
+def trans_messages2str(messages):
+
+    result = [f"{m.role}:{m.content}" for m in messages if m.role != "outer"]
+
+    return "\n".join(result)
+
 if __name__=="__main__":
 
     query = "请帮我分析一下有色金属板块上涨逻辑"
-    print(get_deepseek_answer(query))
+

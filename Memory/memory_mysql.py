@@ -9,6 +9,7 @@ from base.api import *
 from typing import Optional, Tuple
 from datetime import datetime, date
 from typing import List
+from Event import *
 
 
 def calculate_duration(start_time: datetime, end_time: datetime) -> int:
@@ -48,7 +49,7 @@ class HistoryTableManager:
                 return result[0] > 0
 
         except Exception as e:
-            print(f"❌ 检查表是否存在时出错: {e}")
+            logger.error(f"❌ 检查表是否存在时出错: {e}")
             return False
         finally:
             connection.close()
@@ -72,14 +73,14 @@ class HistoryTableManager:
                         """
                 cursor.execute(create_table_sql)
             connection.commit()
-            print("成功已存在")
+            logger.info("成功已存在")
         except Exception as e:
-            print(f"创建表时出错: {e}")
+            logger.info(f"创建表时出错: {e}")
         finally:
             connection.close()
 
     @staticmethod
-    def get_event_info(event) -> Optional[Tuple[str, str, List[str]]]:
+    def get_event_info(event:Event) -> Optional[Tuple[str, str, List[str]]]:
         """
         从事件中提取类型、情感和关键词
 
@@ -89,8 +90,8 @@ class HistoryTableManager:
         Returns:
             元组 (事件类型, 情感态度, 关键词列表) 或 None
         """
-        summary = event.summary
-        conversation = event.history.trans_cache2openai()
+        summary = event.history
+        conversation = event.get_tail_str(event.messages, load_outer=False)
 
         prompt = f"""你是一个聪明的助手，你的任务是从指定的事件信息中提取出以下信息。
 # 事件类型(每一个事件只能属于以下五种类型之一：娱乐，工作，日常，健康，其他)
@@ -123,16 +124,16 @@ class HistoryTableManager:
 
             # 验证必要字段
             if not all([event_type, sentiment]):
-                print("缺少必要的事件信息字段")
+                logger.error("缺少必要的事件信息字段")
                 return None
 
             return event_type, sentiment, keywords
 
         except json.JSONDecodeError as e:
-            print(f"解析JSON响应失败: {e}")
+            logger.error(f"解析JSON响应失败: {e}")
             return None
         except Exception as e:
-            print(f"获取事件详细信息出错: {e}")
+            logger.error(f"获取事件详细信息出错: {e}")
             return None
 
     def prepare_event_data(self, event_id, event) -> Optional[dict]:
@@ -146,8 +147,8 @@ class HistoryTableManager:
             event_type, sentiment, keywords = event_info
 
             # 处理时间
-            create_time= event.history.cache[0].create_time
-            end_time = event.history.cache[-1].create_time
+            create_time= event.messages[0].create_time
+            end_time = event.messages[-1].create_time
             # 计算持续时间
             exist_minutes = calculate_duration(create_time, end_time)
 
@@ -156,7 +157,7 @@ class HistoryTableManager:
             event_data = {
                 'id': event_id,
                 'type': event_type,
-                'summary': event.summary,
+                'summary': event.history,
                 'round': event.round,
                 'sentiment': sentiment,
                 'create_time': create_time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -167,7 +168,7 @@ class HistoryTableManager:
             return event_data
 
         except Exception as e:
-            print(f"准备事件数据时出错: {e}")
+            logger.error(f"准备事件数据时出错: {e}")
             return None
 
     def insert_table(self, event_id, event) -> bool:
@@ -241,6 +242,8 @@ class HistoryTableManager:
             return None
         finally:
             connection.close()
+
+
         
 
 if __name__=="__main__":

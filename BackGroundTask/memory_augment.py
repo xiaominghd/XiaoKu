@@ -3,14 +3,21 @@
 @date: 2025/12/7
 @description: 
 """
-from Memory.memory_manager import *
+from Ku import *
 
-async def retrieve(memory_bank, event):
+async def retrieve(agent:XiaoKu):
 
-    if event is not None:
-        result = await memory_bank.get_event_memory(event)
+    if agent.events.current_event is not None:
+        result = await agent.memory.get_event_memory(agent.events.current_event)
 
-        logger.info(f"检索之后得到的结果为：{result}")
+        if len(result) > 0:
+
+            logger.info(f"检索之后得到的结果为：{result}")
+
+            message = SingleContext(create_time=time.time(), role='outer', content=f"[历史]{result}")
+
+            await agent.context.append_message(message)
+            await agent.events.current_event.insert_message(message)
 
         return None
 

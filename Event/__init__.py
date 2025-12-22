@@ -3,72 +3,110 @@
 @date: 2025/12/1
 @description: 
 """
-import json
-
-from Context import *
+from typing import List
 from base.api import *
+import copy
+from datetime import datetime
+
+class SingleContext:
+
+    def __init__(self, create_time, role, content):
+
+        self.create_time = create_time
+        self.role = role
+        self.content = content
+
 class Event:
 
-    def __init__(self, name:str=None, summary:str="", history:Context=None):
-        if history is not None:
-            self.history = history
+    def __init__(self, name:str=None, event_history:SingleContext=None, tail:List[SingleContext]=None):
+        if tail is not None:
+            self.tail = tail
+            self.round = len(tail)
+        else:
 
-            self.round = 0
-            for c in self.history.cache:
-                if c.role != "outer":  # 过滤掉外部信息
-                    self.round += 1
-
-        if history is None:
-            self.history = Context()
+            self.tail = []
             self.round = 0
 
-        self.summary = summary
+        if event_history is None:
+            self.event_history = SingleContext(create_time=datetime.now(),role="outer", content="")
+        else:
+            self.event_history = event_history
+
+
         self.name = name
+        self.messages = []
 
-    async def update_history(self, role, content):
-        await self.history.append_context(message=SingleContext(create_time=datetime.now(), role=role, content=content))
-        if role == "user" or role == "assistant":
-            self.round += 1
+        self.lock = asyncio.Lock()
 
-    def update_summary(self):
+    async def insert_message(self, message:SingleContext):
 
-        content = self.history.trans_cache2openai()
+        async with self.lock:
 
-        prompt = f"""你是一个专业的对话总结助手，负责基于历史总结和最新对话内容，生成一份结构清晰、信息密度高的更新总结。这份总结将在后续对话中被检索使用，因此需要确保其准确性、完整性和可检索性。
+            self.tail.append(message)
+            self.messages.append(message)
 
+    async def update_history(self):
+
+        if len(self.tail) < 20:
+            # 超过20轮就更新一次小尾巴，小尾巴保持在15轮之后第一个user的位置
+            return
+        else:
+
+            old_tail_length = len(self.tail)
+
+            try:
+                target_index = next(i for i, v in enumerate(self.tail) if i > 14 and v.role=="user")
+            except StopIteration:
+                return
+
+            new_tail = copy.deepcopy(self.tail[target_index:])  # 不能直接改
+            prepared_merge_tail = copy.deepcopy(self.tail[:target_index])
+            conversation_str = "\n".join([f"{c.role}：{c.content}" for c in prepared_merge_tail])
+
+            prompt = f"""你需要根据用户的历史对话总结和最新的对话走向情况，形成一份新的总结。
 请遵循以下要求生成总结：
 
-**总结核心目标：**
-- 提炼对话中的关键信息，便于后续快速回顾和上下文恢复
-- 保持客观中立，仅基于对话内容进行归纳，不添加未提及的信息
-- 突出对后续对话有持续影响的内容（如未解决的问题、待办事项、重要决策等）
+**总结要求**
+- 如果历史对话总结为空，则根据最新的对话走向情况，生成一段总结。
+- 如果历史对话总结不为空，请你提炼最新对话中的关键信息，对历史对话总结进行续写。
+- 给定的对话中可能会存在以[背景]和[历史]开头，角色为outer的信息。对于这类信息，你需要判断其中是否存在对当前对话有意义的内容。
+如果没有，请及时舍弃。如果有，请你将这些有意义的信息进行压缩之后入到对话总结中。
 
-**细节要素：**
-1. **核心议题与问题**：明确对话讨论的主题、用户的核心需求或待解决的问题
-2. **关键事实与数据**：涉及的具体信息、数字、时间线、引用来源等客观事实
-3. **已采取的行动**：用户或助手已执行的操作、已完成的步骤、已提供的资源
+**总结角度**
+1. **核心议题与问题**：对话讨论的主题、用户的核心需求或待解决的问题
 4. **达成的决议与解决方案**：双方明确同意的结论、采纳的方案、确认的答案
 5. **计划中的后续步骤**：约定的下一步行动、待办事项、预期交付成果及时间（如有）
 6. **未解决或待定事项**：尚未明确的问题、需要后续跟进的点、存在的疑虑或分歧
-7. **重要上下文与逻辑**：关键决策的理由、前提假设、约束条件、排除的选项及其原因
 
 **输出格式要求：**
-- 以连贯、简洁的段落形式输出总结内容，最多不超过两个段落。
+- 以连贯、简洁的段落形式输出总结内容，并且保持只有一段。
 - 语言保持专业、清晰，避免模糊表述（如“一些”“几个”）
 - 仅输出总结内容，不包含任何额外解释、标题或注释
 
 **历史总结：**
-{self.summary}
+{self.event_history.content}
 
 **最新对话内容：**
-{content}"""
+{conversation_str}"""
 
-        summary = get_qwen_max_answer(prompt)
-        self.summary = summary
+            new_history = await get_qwen_max_answer_async(prompt, enable_think=False)
+
+            async with self.lock:
+
+                contexts = new_tail + self.tail[old_tail_length:]
+                self.tail = contexts
+                self.event_history = SingleContext(create_time=datetime.now(), role="outer", content=new_history)
+
+            return self.event_history
 
     async def get_key_point(self):
-        # 根据历史信息总结一些
-        infos = self.history.trans_cache2openai(load_outer=False)
+
+
+        infos = trans_messages2str(self.tail)  # 将当前的尾巴用于检索历史信息
+
+        if infos == "":
+            return []
+
 
         prompt = f"""你是一个聪明的助手，你的任务是根据用户和助手的对话，生成当前对话的2-3个主题。这些主题将会被用于在历史信息中检索具有相似主题的事件。
 请你以json的形式进行返回，返回示例，除此之外不要返回其他信息:{{"result":["主题1","主题2"]}}
@@ -85,11 +123,6 @@ class Event:
         except Exception as e:
             logger.error(f"获取关键信息失败：{e}")
             return []
-
-
-
-
-
 
 
 

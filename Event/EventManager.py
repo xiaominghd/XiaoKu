@@ -3,10 +3,6 @@
 @date: 2025/12/1
 @description: 
 """
-from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, Optional
-import statistics
-import re
 from Event import *
 from typing import List
 class EventBank:
@@ -22,36 +18,56 @@ class EventBank:
         self.prepared_events_mapper = {}
 
     def init_event_list(self, event_list:List[Event]):
+
         self.current_event = event_list[0]
 
         self.prepared_events = event_list[1:]
 
         for event in event_list:
+
             self.prepared_events_mapper[event.name]=event
 
+    async def update(self, event_name, message:SingleContext):
+        if event_name == self.current_event.name:
+            self.current_event.tail.append(message)
+            return self.current_event
 
-    async def update(self, event_name:str):
+        if event_name in self.prepared_events_mapper:  # 当前正在进行状态切换
 
-        event = self.prepared_events_mapper[event_name]  # 通过映射表的方式找到当前数据
+            logger.info(f"将当前话题：{self.current_event.name} 切换至 {event_name}")
 
-        self.current_event = event  # 当前事件需要进行一次总结
-        self.finished_events.append(event)
+            await self.current_event.update_history()
+
+            res = self.current_event
+
+            self.finished_events.append(self.current_event)
+            self.current_event = self.prepared_events_mapper[event_name]
+
+            self.current_event.tail.append(message)
+
+            return res
+
+        elif event_name not in self.prepared_events_mapper:  # 当前正在创建新事件
+
+            new_event = Event(name=event_name)
+            res = self.current_event
+            await self.current_event.update_history()
+
+            self.prepared_events_mapper[event_name] = new_event
+
+            self.finished_events.append(self.current_event)
+            self.current_event = new_event
+
+            self.current_event.tail.append(message)
+            return res
 
 
-        # 更新候选话题
-        self.prepared_events = [event for event in self.prepared_events if event != self.current_event]
-
-        # 更新已经完成的话题
-        self.finished_events = [event for event in self.finished_events if event != self.current_event]
 
     async def check_current_conversation(self, message: SingleContext):
 
-        history = self.current_event.history.trans_cache2openai()
-
+        history = trans_messages2openai(self.current_event.tail, load_outer=False)  # 获取当前的历史信息
         history = history + [{"role":message.role, "content":message.content}]
 
-        conversation_str = history
-        # 将当前的会话与之前的对话进行拼接
 
         other_event = [e.name for e in self.prepared_events + self.finished_events]
 
@@ -99,9 +115,9 @@ class EventBank:
 - 话题名称应简洁明了，体现核心内容
 
 ## 输入信息
-用户和助手的对话：{conversation_str}
-用户和助手当前的话题（话题名称：话题总结）：
-{self.current_event.name}:{self.current_event.summary}
+用户和助手的对话：{history}
+用户和助手当前的话题：
+{self.current_event.name}
 用户和助手的其他话题名称列表：
 {other_event_str}
 
@@ -124,89 +140,49 @@ class EventBank:
         answer = get_qwen_max_answer(prompt)
         logger.info(f"当前的话题为：{answer}")
 
-        if answer == self.current_event.name:
-            await self.current_event.history.append_context(message)
-
-        if answer in other_event:  # 当前正在进行状态切换
-
-            logger.info(f"将当前话题：{self.current_event.name} 切换至 {answer}")
-
-            await self.update(answer)  # 仅调整位置
-
-            await self.current_event.history.append_context(message)
-
-            return self.prepared_events_mapper[answer]  # 返回的数据类型是不同的
-
-
-        elif answer not in other_event and answer != self.current_event.name:  # 当前正在创建新事件
-
-            new_event = Event(name=answer)
-
-            self.prepared_events_mapper[answer] = new_event
-
-            self.finished_events.append(self.current_event)
-            self.current_event = new_event
-
-            await self.current_event.history.append_context(message)
-
-            return self.prepared_events_mapper[answer]
+        return answer
 
     async def get_conversation_guide(self):
-        conversations = []
-        for message in self.current_event.history.cache[2:]:
+        conversations = [self.current_event.event_history] + self.current_event.tail
+        # 将历史信息与当前对话信息进行整合 成为新的历史信息
 
-            if any(marker in message.content for marker in ["[系统上下文开始]", "[指引信息开始]","[系统上下文结束]"]):
-                continue
 
-            else:
+        if len(conversations) < 10:
 
-                conversations.append(message)
+            conversation_str = "\n".join([f"role:{conversation.role}, content:{conversation.content}"
+                            for conversation in conversations])
+        else:
+            conversation_str = "\n".join([f"role:{conversation.role}, content:{conversation.content}"
+                                          for conversation in conversations[-10:]])
 
-        if len(conversations) < 3:
+        if len(conversation_str) == 0:
             return None
 
-        conversation_str = "\n".join([f"role:{conversation.role}, content:{conversation.content}"
-                            for conversation in conversations[-10:]])
-        prompt = f"""你是一个专业的对话分析助手，请根据提供的用户与助手的历史对话内容，生成结构化指引，以提升用户参与积极性，并引导助手进行更有效的互动。
+        prompt = f"""你是一个专业的对话分析助手，请你根据提供的用户和助手的历史对话，生成以下两类信息：
 
-请从以下三个维度进行分析并提供建议，并确保输出为**纯JSON格式**：
+## 1. 对话评价
+- 检查助手在与主人的对话中对主人情绪的回应和感知是否充分。
+- 检查助手在与主人的对话中是否存在幻觉：例如提及了历史信息之外的其他行为或者是反复提及与对话无关的行为
+- 检查助手理解用户的意图是否存在遗漏的情况
 
-## 1. 需求响应
-- 评估助手是否充分关注用户的情感与需求
-- 检查助手在对话过程中是否保持了：感知主人情绪，提供温暖的共情回应的人格。
-- 检查是否有误解用户意图或信息遗漏
-
-## 2. 对话目标（远期互动方向）
-- 基于当前话题，推荐2-3个用户可能感兴趣的子话题或延伸方向
-- 助手可能从对话中提取用户潜在画像特征（如兴趣、身份、需求等）。
+## 2. 对话目标
+- 基于当前话题以及外部信息，推荐2-3个用户可能感兴趣的子话题或延伸方向。
+- 基于当前话题，助手可以尝试挖掘出的用户的画像特征（例如，性格、习惯），并基于设计对话的话题。
 - 提供自然过渡到新话题的对话策略
 
 ## 输出要求
-- 仅返回一个JSON对象，格式严格如下，除此之外不要输出其他任何信息：
+- 仅返回一个JSON对象，对话评价和对话目标均保持在50-100字之间，且只有一段。格式严格如下，除此之外不要输出其他任何信息：
 {{
-  "需求": "需求响应",
+  "评价": "对话评价",
   "目标": "对话目标"
 }}
 
 用户和助手的对话如下：
 {conversation_str}"""
 
-        answer = await get_deepseek_answer(message=prompt)
+        answer = await get_qwen_max_answer_async(message=prompt, enable_think=True, enable_search=True)
 
         return answer
 
-    # def check_conversation_interest(self):
-    #
-    #     # 根据当前对话响应情况快速判断用户的感兴趣程度
-    #     # 兼具时间判据以及当前回复的判据
-    #     analysis = (
-    #         ConversationInterestAnalyzer.get_conversation_interest_level(self.current_event.history.cache))
-    #
-    #     if analysis['interest_level'] != "high":
-    #
-    #         return True
-    #     else:
-    #
-    #         return False
 
 

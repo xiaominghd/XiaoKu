@@ -44,7 +44,7 @@ class HistoryTableManager:
                 return result[0] > 0
 
         except Exception as e:
-            print(f"❌ 检查表是否存在时出错: {e}")
+            logger.error(f"❌ 检查表是否存在时出错: {e}")
             return False
         finally:
             connection.close()
@@ -67,9 +67,9 @@ class HistoryTableManager:
 )"""
                 cursor.execute(sql)
             connection.commit()
-            print(f"创建成功，{self.child_table_name}已存在")
+            logger.info(f"创建成功，{self.child_table_name}已存在")
         except Exception as e:
-            print(f"创建表时出错: {e}")
+            logger.info(f"创建表时出错: {e}")
         finally:
             connection.close()
 
@@ -102,7 +102,7 @@ class HistoryTableManager:
         connection = self.get_connection()
 
         for i, chunk in enumerate(chunks):
-            child_id = id + str(i)  # 重命名变量避免覆盖参数
+            child_id = str(int(id) + i)  # 重命名变量避免覆盖参数
 
             content = json.dumps([{'role': c.role, 'content': c.content} for c in chunk], ensure_ascii=False)
             create_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -168,7 +168,7 @@ class HistoryTableManager:
         return updated_count
 
     @staticmethod
-    def get_event_info(event) -> Optional[Tuple[str, str, List[str]]]:
+    def get_event_info(event:Event) -> Optional[Tuple[str, str, List[str]]]:
         """
         从事件中提取类型、情感和关键词
 
@@ -178,8 +178,9 @@ class HistoryTableManager:
         Returns:
             元组 (事件类型, 情感态度, 关键词列表) 或 None
         """
-        summary = event.summary
-        conversation = event.history.trans_cache2openai()
+        summary = event.event_history.content
+
+        conversation = trans_messages2openai(event.tail)
 
         prompt = f"""你是一个聪明的助手，你的任务是从指定的事件信息中提取出以下信息。
 # 事件类型(每一个事件只能属于以下五种类型之一：娱乐，工作，日常，健康，其他)
@@ -236,8 +237,8 @@ class HistoryTableManager:
             event_type, sentiment, keywords = event_info
 
             # 处理时间
-            create_time= event.history.cache[0].create_time
-            end_time = event.history.cache[-1].create_time
+            create_time= event.messages[0].create_time
+            end_time = event.messages[-1].create_time
             # 计算持续时间
 
             def calculate_duration(start_time: datetime, end_time: datetime) -> int:
@@ -251,7 +252,7 @@ class HistoryTableManager:
             event_data = {
                 'id': id,
                 'type': event_type,
-                'summary': event.summary,
+                'summary': event.history,
                 'round': event.round,
                 'sentiment': sentiment,
                 'create_time': create_time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -262,7 +263,7 @@ class HistoryTableManager:
             return event_data
 
         except Exception as e:
-            print(f"准备事件数据时出错: {e}")
+            logger.error(f"准备事件数据时出错: {e}")
             return None
 
     def insert_chef_table(self, event_id, event) -> bool:
@@ -276,7 +277,7 @@ class HistoryTableManager:
             插入是否成功
         """
         # 准备数据
-        event_data = self.prepare_event_data(event_id, event)
+        event_data = self.prepare_event_data(event=event, id=event_id)
         if event_data is None:
             print("无法准备事件数据，插入失败")
             return False
@@ -322,6 +323,96 @@ class HistoryTableManager:
 
         self.insert_chef_table(event_id, event)  # 将event插入到主表中
 
+    def search_event_by_id(self, chat_id):
+
+        sql = f"select * from {self.child_table_name} where id={chat_id}"
+        connection = self.get_connection()
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql)
+                result = cursor.fetchone()
+                connection.close()
+                if result is not None:
+
+                    return {'create_time':result[2], 'retrieve_time':result[4]}
+
+                else:
+                    return None
+        except Exception as e:
+            logger.error(f"检索特定事件失败，失败原因：{e}")
+            connection.close()
+            return None
+
+    def select_recent_events(self):
+
+        connection = self.get_connection()
+
+        try:
+
+            with connection.cursor() as cursor:
+
+                sql = f"""SELECT * from {self.table_name} ORDER by create_time DESC limit 1"""
+
+                cursor.execute(sql)
+
+                result = cursor.fetchone()
+                return result
+
+        except Exception as e:
+            print(f"查询记录时出错：{e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_recent_contents(self, minutes=300):
+        connection = self.get_connection()
+        try:
+            with connection.cursor() as cursor:
+                # 方法1: 使用 NOW() 函数
+                sql = f"""
+                SELECT id, content, create_time 
+                FROM {self.child_table_name}
+                WHERE create_time > NOW() - INTERVAL {minutes} MINUTE
+                ORDER BY id DESC
+                """
+                cursor.execute(sql)
+                results = cursor.fetchall()
+                return list(results)
+        except Exception as e:
+            print(f"查询时出错: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_today_summaries(self):
+        """
+        获取今天创建的所有记录的summary
+        """
+        connection = self.get_connection()
+        try:
+            with connection.cursor() as cursor:
+                # 方法1: 使用 DATE(create_time) = CURDATE()
+                sql = f"""
+                SELECT id, type, summary, create_time, sentiment
+                FROM {self.table_name}
+                WHERE DATE(create_time) = CURDATE()
+                ORDER BY create_time DESC
+                """
+                cursor.execute(sql)
+                results = cursor.fetchall()
+                return results
+        except Exception as e:
+            logger.error(f"查询今天summary时出错: {e}")
+            return []
+        finally:
+            connection.close()
+
+
+
+
+
+
 
 
 
@@ -329,119 +420,8 @@ class HistoryTableManager:
 
 async def main():
     manager = HistoryTableManager()
-
-
-    async def create_event3():
-        from datetime import time
-        context_manager2 = Context()
-
-        message = SingleContext(create_time=datetime(2025, 11, 28, 20, 15, 30), content="小酷，我下个月想去旅行",
-                                role="user")
-        await context_manager2.append_context(message)
-        print(context_manager2)
-
-        message = SingleContext(create_time=datetime(2025, 11, 28, 20, 15, 35),
-                                content="听起来很棒！主人有想好去哪里吗？", role="assistant")
-        await context_manager2.append_context(message=message)
-
-        # 较长时间间隔，用户在思考
-        message = SingleContext(create_time=datetime(2025, 11, 28, 20, 17, 10),
-                                content="还没决定，可能在云南和四川之间选择", role="user")
-        await context_manager2.append_context(message=message)
-
-        message = SingleContext(create_time=datetime(2025, 11, 28, 20, 17, 15),
-                                content="两个地方都很美呢。云南有丽江大理，四川有九寨沟成都",
-                                role="assistant")
-        await context_manager2.append_context(message=message)
-
-        message = SingleContext(create_time=datetime(2025, 11, 28, 20, 18, 23),
-                                content="[背景]峨眉山推出凭持有峨眉山股票可以免门票游览的活动", role="user")
-        await context_manager2.append_context(message=message)
-
-        message = SingleContext(create_time=datetime(2025, 11, 28, 20, 18, 45),
-                                content="我更想去看看自然风光，哪个更好？", role="user")
-        await context_manager2.append_context(message=message)
-
-        message = SingleContext(create_time=datetime(2025, 11, 28, 20, 18, 50),
-                                content="如果主要是自然风光，四川的九寨沟和黄龙更壮观一些",
-                                role="assistant")
-        await context_manager2.append_context(message=message)
-
-        message = SingleContext(create_time=datetime(2025, 11, 28, 20, 20, 15),
-                                content="好的，我研究一下四川的行程，谢谢", role="user")
-        await context_manager2.append_context(message=message)
-
-        event = Event(name="旅行规划", summary="用户咨询旅行目的地，在云南和四川之间选择", history=context_manager2)
-        return event
-
-    def split_event(event: Event):
-
-        max_round = 6
-        chunks = []
-        mini_chunk = []
-        i = 0
-        conversations = event.history.cache
-        while i < len(conversations) - 1:
-
-            if conversations[i].role == "outer":
-
-                i += 1
-                continue
-
-            else:
-
-                if len(mini_chunk) < max_round and "[指引信息开始]" not in conversations[i].content:
-
-                    mini_chunk.append(conversations[i])
-                    i += 1
-
-                else:
-
-                    conversation_str = ""
-                    for j, info in enumerate(mini_chunk):
-                        conversation_str += f"第{j + 1}轮 {info.role}:{info.content}\n"
-                    prompt = f"""你的任务是分析对话的连贯性，判断从第几轮开始对话主题或内容方向发生了变化。
-
-分析步骤：
-1. 仔细阅读整个对话，理解每轮对话的主题和内容
-2. 判断相邻轮次之间的连贯性，是否延续了相同的话题或逻辑
-3. 找出第一个出现主题转换或内容跳跃的轮次
-
-判断标准：
-- 如果所有对话内容保持一致性，没有切换，则返回-1
-- 如果从第n轮开始与第n-1轮的内容有不同（话题转变、跳跃到无关内容等），则返回n
-
-请只以JSON格式返回结果，不要包含任何解释说明。
-返回格式：{{"result": 2}}
-
-需要分析的对话内容：
-{conversation_str}
-"""
-
-                    try:
-
-                        answer = json.loads(get_qwen_flash_answer(prompt))["result"]
-
-                        if answer == -1:
-                            chunks.append(mini_chunk)
-                        else:
-                            chunks.append(mini_chunk[:answer - 1])
-                            mini_chunk = mini_chunk[answer:]
-
-                    except Exception as e:
-                        mini_chunk = []
-                        logger.error(f"切片出错：{e}")
-                        continue
-
-        if len(mini_chunk) != 0:
-            chunks.append(mini_chunk)
-
-        return chunks
-    event =await create_event3()
-    id = generate_timestamp_key()
-    chunks = split_event(event)
-    manager.insert_child(chunks,id)
-
+    previous_conversation = manager.get_recent_contents()
+    print(previous_conversation)
 
 if __name__=="__main__":
     asyncio.run(main())

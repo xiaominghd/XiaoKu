@@ -66,8 +66,8 @@ class HistoryIndexManager:
 
         for i, chunk in enumerate(chunks):
 
-            child_chat_id = id + str(i)
-            next_chat_id = id + str(i+1)
+            child_chat_id = str(int(id) + i)
+            next_chat_id = str(int(id) + i + 1)
             chat_id = id
 
             conversation_str = "\n".join([f"{c.role}:{c.content}" for c in chunk])
@@ -125,7 +125,7 @@ class HistoryIndexManager:
                 else:
                     logger.error(f"插入失败: {response}")
             except Exception as e:
-                print(f"插入对话子索引失败：{e}")
+                logger.error(f"插入对话子索引失败：{e}")
 
     def delete_child(self):
 
@@ -176,11 +176,11 @@ class HistoryIndexManager:
 
     def insert(self, id, event:Event):
 
-        status_vector = get_qwen_embedding(event.summary)[0]
+        status_vector = get_qwen_embedding(event.history)[0]
 
         doc = {
             "chat_id": id,
-            "summary_content": event.summary,
+            "summary_content": event.history,
             "summary_vector": status_vector
         }
 
@@ -254,8 +254,12 @@ class HistoryIndexManager:
 
 async def main():
     manager = HistoryIndexManager()
-    results = manager.search_child_chat(query="RAG检索")
-    print(results)
+    # results = manager.search_child_chat(query="RAG检索")
+    # print(results)
+    # manager.delete()
+    # manager.delete_child()
+    # manager.create()
+    # manager.create_child()
 
     # async def create_event3():
     #     from datetime import time
